@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handover – send files with a code</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E9EEF3; --surface:#FFFFFF; --ink:#0F1B2D; --muted:#5B6B7F; --line:#D2DBE5;
+  --accent:#2F5BFF; --accent-ink:#FFFFFF; --ok:#12805C; --bad:#C62F3E; --track:#E3E9F0;
+  --display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+  --body:'Inter','Segoe UI',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0C1320; --surface:#141E30; --ink:#EAF0F8; --muted:#92A2B8; --line:#26344B; --accent:#6E8CFF; --accent-ink:#0C1320; --ok:#3CCB9A; --bad:#FF7A86; --track:#1E2A40; }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.5 var(--body);min-height:100vh}
+.wrap{max-width:980px;margin:0 auto;padding:28px 20px 64px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+.brand{font:700 22px var(--display);letter-spacing:-.01em}
+.status{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}
+.status.on .dot{background:var(--ok)}
+.grid{display:grid;grid-template-columns:1.15fr 1fr;gap:20px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px}
+h2{font:700 15px var(--body);margin:0 0 6px}
+p.hint{margin:0 0 16px;color:var(--muted);font-size:14px}
+.code{font:600 clamp(34px,7vw,52px)/1.05 var(--mono);letter-spacing:.04em;margin:14px 0 18px;word-break:break-all}
+button{font:600 14px var(--body);border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--ink);padding:10px 16px;cursor:pointer}
+button:hover{border-color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.primary:hover{filter:brightness(1.08)}
+button:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+input.codein{width:100%;font:600 24px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);margin-bottom:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.note{font-size:13px;color:var(--muted);margin-top:10px}
+.stack{display:grid;gap:12px;margin-top:20px}
+.req{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--accent);border-radius:12px;padding:14px 16px;background:var(--surface)}
+.req b{font-family:var(--mono);letter-spacing:.04em}
+.session{margin-top:20px}
+.session .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:99px;background:var(--track);color:var(--muted)}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:30px 16px;text-align:center;color:var(--muted);transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--accent);background:var(--track)}
+.drop .row{justify-content:center;margin-top:12px}
+.files{margin-top:16px;display:grid;gap:10px}
+.file{border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.file .l{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.file .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.file .s{color:var(--muted);white-space:nowrap}
+.bar{height:6px;border-radius:99px;background:var(--track);margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
+.file.done .bar i{background:var(--ok)} .file.done .s{color:var(--ok)}
+.file.fail .bar i{background:var(--bad)} .file.fail .s{color:var(--bad)}
+.hidden{display:none!important}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:10px;font-size:14px;max-width:90vw;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
+#toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Handover</div>
+    <div class="status" id="status" role="button" tabindex="0" style="cursor:pointer"><span class="dot"></span><span id="statusText">Connecting…</span></div>
+  </header>
+
+  <pre id="statusDetail" class="note hidden" style="white-space:pre-wrap;word-break:break-all;margin:-14px 0 18px;font:12px/1.6 var(--mono)"></pre>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Your code</h2>
+      <p class="hint">Share this with anyone who wants to send you files. You decide whether to accept.</p>
+      <div class="code" id="myCode">––––-––––</div>
+      <div class="row">
+        <button id="copyBtn" class="primary">Copy code</button>
+      </div>
+      <p class="note">Keep this tab open to receive requests.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Send files</h2>
+      <p class="hint">Enter the receiver’s code. They get a request and the transfer starts once they accept.</p>
+      <input id="toCode" class="codein" placeholder="ABCD-2345" maxlength="9" autocomplete="off" spellcheck="false" aria-label="Receiver code">
+      <div class="row">
+        <button id="reqBtn" class="primary">Send request</button>
+        <button id="cancelBtn" class="hidden">Cancel request</button>
+      </div>
+      <p class="note" id="reqNote"></p>
+    </section>
+  </div>
+
+  <div class="stack" id="incoming"></div>
+
+  <section class="panel session hidden" id="session">
+    <div class="top">
+      <div>
+        <h2 id="sessTitle">Connected</h2>
+        <span class="pill" id="sessMode">Connecting…</span>
+      </div>
+      <button id="endBtn">End session</button>
+    </div>
+
+    <div id="senderUI" class="hidden">
+      <div class="drop" id="drop">
+        Drop files here to send them
+        <div class="row">
+          <button id="pickFiles" class="primary">Choose files</button>
+          <button id="pickFolder">Choose a folder</button>
+        </div>
+      </div>
+    </div>
+    <p class="note hidden" id="receiverNote"></p>
+    <div class="files" id="files"></div>
+  </section>
+</div>
+<input type="file" id="fileInput" multiple hidden>
+<input type="file" id="folderInput" webkitdirectory hidden>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- MQTT client, used only to exchange connection details through several free public brokers. -->
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>window.mqtt || document.write('<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"><\/script>');</script>
+
+<script>
+(() => {
+'use strict';
+
+/* ------------------------------------------------------------------
+   HOW THIS WORKS
+   - Your code is a topic name on several free public MQTT brokers.
+     We connect to ALL of them at once; if any one is up, you are online.
+     The brokers only carry tiny handshake messages, never file data.
+   - Sender asks the receiver's code for permission. Nothing happens
+     until the receiver clicks Accept.
+   - After Accept, the two browsers connect directly (WebRTC) and files
+     stream in 64 KB chunks with flow control: no size or count limit.
+
+   OPTIONAL: add a TURN server to RTC_CONFIG for networks that block
+   direct connections, e.g.
+     {urls:'turn:turn.example.com:3478', username:'u', credential:'p'}
+------------------------------------------------------------------- */
+const BROKERS = [
+  // Port 443 first: mobile and office networks almost always allow it.
+  { url:'wss://public.cloud.shiftr.io', username:'public', password:'public' },
+  { url:'wss://mqtt.eclipseprojects.io/mqtt' },
+  { url:'wss://demo.tbmq.io:443/mqtt', username:'demo' },
+  // Other ports: work on most home/office Wi-Fi, but some mobile carriers block them.
+  { url:'wss://broker.emqx.io:8084/mqtt' },
+  { url:'wss://broker.hivemq.com:8884/mqtt' },
+  { url:'wss://test.mosquitto.org:8081' }
+];
+const RTC_CONFIG = { iceServers: [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' }
+] };
+
+const $ = (s) => document.querySelector(s);
+const TOPIC = 'handover1/';
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const CHUNK = 64 * 1024;
+const READ = 1024 * 1024;
+const WINDOW = 8 * 1024 * 1024;
+const ACK_EVERY = 2 * 1024 * 1024;
+const CAN_PICK_DIR = typeof window.showDirectoryPicker === 'function';
+const RTC_FAIL = 'Could not open a direct connection. Your network may block peer-to-peer traffic; try another network or add a TURN server.';
+
+let myCode = null;
+let role = null, peerCode = null, link = null, sess = null;
+let out = null;                       // pending outgoing request
+const incoming = new Map();           // code -> { s }
+let aborted = false, dirHandle = null;
+
+// ---- helpers ---------------------------------------------------------
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch { return null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch {} }
+};
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 4200);
+}
+function fmt(n){
+  const u = ['B','KB','MB','GB','TB']; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i ? n.toFixed(n < 10 ? 2 : 1) : n) + ' ' + u[i];
+}
+function formatCode(v){
+  v = v.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);
+  return v.length > 4 ? v.slice(0,4) + '-' + v.slice(4) : v;
+}
+function rid(){ return Math.random().toString(36).slice(2, 12) + Date.now().toString(36); }
+function newCode(){
+  let s = ''; for (const x of crypto.getRandomValues(new Uint8Array(8))) s += ALPHABET[x % ALPHABET.length];
+  return s.slice(0,4) + '-' + s.slice(4);
+}
+function setStatus(on, text){
+  $('#status').classList.toggle('on', on);
+  $('#statusText').textContent = text || (on ? 'Online' : 'Connecting…');
+}
+const sendJSON = (conn, o) => { try { conn.send(JSON.stringify(o)); } catch {} };
+
+$('#status').onclick = () => $('#statusDetail').classList.toggle('hidden');
+
+// ---- signalling over public MQTT brokers -----------------------------
+const brokers = [];
+const seen = new Map();
+function pub(to, obj){
+  obj.f = myCode; obj.i = rid();
+  const data = JSON.stringify(obj), topic = TOPIC + to.replace('-','');
+  brokers.forEach((b) => { if (b.up) { try { b.c.publish(topic, data, { qos:0 }); } catch {} } });
+}
+function refreshStatus(){
+  const up = brokers.filter((b) => b.up).length;
+  const lines = brokers.map((b) => (b.up ? '✓ ' : '✗ ') + b.url.replace('wss://','') + (b.up || !b.err ? '' : '  (' + b.err + ')'));
+  $('#statusDetail').textContent = lines.join('\n');
+  $('#status').title = lines.join('\n');
+  if (up) setStatus(true, 'Online (' + up + '/' + brokers.length + ')');
+  else setStatus(false, 'Connecting…');
+}
+function startSignalling(){
+  if (typeof window.mqtt === 'undefined') { setStatus(false, 'Could not load the connection library. Check your internet or ad-blocker.'); return; }
+  const dec = new TextDecoder();
+  BROKERS.forEach((cfg) => {
+    const opts = { clientId:'hov_' + rid(), clean:true, reconnectPeriod:3000, connectTimeout:8000, keepalive:30 };
+    if (cfg.username) opts.username = cfg.username;
+    if (cfg.password) opts.password = cfg.password;
+    const c = mqtt.connect(cfg.url, opts);
+    const rec = { url:cfg.url, c, up:false, err:'' }; brokers.push(rec);
+    c.on('connect', () => { rec.up = true; rec.err = ''; c.subscribe(TOPIC + myCode.replace('-',''), { qos:0 }); refreshStatus(); });
+    c.on('close', () => { rec.up = false; refreshStatus(); });
+    c.on('error', (e) => { rec.err = String((e && e.message) || e).slice(0, 60); refreshStatus(); });
+    c.on('message', (t, payload) => {
+      let m; try { m = JSON.parse(dec.decode(payload)); } catch { return; }
+      if (!m || !m.i || seen.has(m.i)) return;   // same message arrives via every broker
+      seen.set(m.i, 1); if (seen.size > 500) seen.delete(seen.keys().next().value);
+      onMsg(m);
+    });
+  });
+  setTimeout(() => {
+    if (!brokers.some((b) => b.up)) setStatus(false, 'Can’t reach any signalling server. Tap here for details.');
+  }, 12000);
+}
+
+// keep codes unique across tabs of one browser
+const bc = 'BroadcastChannel' in window ? new BroadcastChannel('handover-codes') : null;
+function pickCode(){
+  return new Promise((res) => {
+    let code = store.get('handover-code');
+    if (!code || code.replace('-','').length !== 8) code = newCode();
+    if (!bc) return res(code);
+    let taken = false;
+    const h = (e) => { if (e.data && e.data.taken === code) taken = true; };
+    bc.addEventListener('message', h); bc.postMessage({ q:code });
+    setTimeout(() => { bc.removeEventListener('message', h); res(taken ? newCode() : code); }, 350);
+  });
+}
+if (bc) bc.addEventListener('message', (e) => { if (e.data && e.data.q && e.data.q === myCode) bc.postMessage({ taken:e.data.q }); });
+
+function onMsg(m){
+  switch (m.t) {
+    case 'req':
+      if (!m.f || !m.s || m.f === myCode) return;
+      if (role) return pub(m.f, { t:'busy', s:m.s });
+      pub(m.f, { t:'ack', s:m.s });
+      if (!incoming.has(m.f) || incoming.get(m.f).s !== m.s) addIncoming(m.f, m.s);
+      break;
+    case 'cancel':
+      for (const [c, e] of incoming) if (e.s === m.s) removeIncoming(c);
+      break;
+    case 'ack':
+      if (out && out.s === m.s) { clearInterval(out.timer); out.acked = true; $('#reqNote').textContent = 'Waiting for ' + out.to + ' to accept…'; }
+      break;
+    case 'dec':
+      if (out && out.s === m.s) { const to = out.to; clearOutUI(); toast(to + ' declined the request.'); }
+      break;
+    case 'busy':
+      if (out && out.s === m.s) { const to = out.to; clearOutUI(); toast(to + ' is busy with another transfer.'); }
+      break;
+    case 'acc':
+      if (out && out.s === m.s) {
+        const o = out; clearOutUI();
+        role = 'sender'; peerCode = o.to; sess = { id:o.s };
+        openSession(); startRTC(true);
+      } else pub(m.f, { t:'bye', s:m.s });
+      break;
+    case 'sdp': onSdp(m); break;
+    case 'ice': onIce(m); break;
+    case 'bye':
+      if (sess && sess.id === m.s) resetSession((peerCode || 'The other side') + ' ended the session.', false);
+      break;
+  }
+}
+
+// ---- sending a request ----------------------------------------------
+$('#toCode').addEventListener('input', (e) => { e.target.value = formatCode(e.target.value); });
+$('#toCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#reqBtn').click(); });
+$('#copyBtn').onclick = async () => {
+  try { await navigator.clipboard.writeText(myCode || ''); toast('Code copied.'); }
+  catch { toast('Select the code and copy it manually.'); }
+};
+
+function clearOutUI(){
+  if (out) clearInterval(out.timer);
+  out = null;
+  $('#reqBtn').disabled = false; $('#cancelBtn').classList.add('hidden'); $('#reqNote').textContent = '';
+}
+function cancelOutgoing(){
+  if (out) pub(out.to, { t:'cancel', s:out.s });
+  clearOutUI();
+}
+$('#cancelBtn').onclick = cancelOutgoing;
+
+$('#reqBtn').onclick = () => {
+  const to = $('#toCode').value;
+  if (to.replace('-','').length !== 8) return toast('Enter the full 8-character code.');
+  if (!brokers.some((b) => b.up)) return toast('Not online yet. Wait for the status to show Online.');
+  if (role) return toast('End the current session first.');
+  if (to === myCode) return toast('That is your own code.');
+  const s = rid();
+  out = { to, s, acked:false, tries:0, timer:null };
+  $('#reqBtn').disabled = true; $('#cancelBtn').classList.remove('hidden');
+  $('#reqNote').textContent = 'Contacting ' + to + '…';
+  pub(to, { t:'req', s });
+  out.timer = setInterval(() => {
+    if (!out || out.s !== s || out.acked) return;
+    if (++out.tries >= 4) { cancelOutgoing(); toast('Nobody is online with that code.'); return; }
+    pub(to, { t:'req', s });
+  }, 2000);
+};
+
+// ---- receiving a request --------------------------------------------
+function addIncoming(code, s){
+  incoming.set(code, { s });
+  removeIncomingCard(code);
+  const el = document.createElement('div'); el.className = 'req'; el.id = 'in-' + code;
+  el.innerHTML = '<div><b></b> wants to send you files.</div><div class="row"></div>';
+  el.querySelector('b').textContent = code;
+  const row = el.querySelector('.row');
+  const mk = (label, cls, fn) => { const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls; b.onclick = fn; row.appendChild(b); };
+  if (CAN_PICK_DIR) {
+    mk('Accept and choose a folder', 'primary', () => accept(code, true));
+    mk('Accept (save to Downloads)', '', () => accept(code, false));
+  } else {
+    mk('Accept', 'primary', () => accept(code, false));
+  }
+  mk('Decline', '', () => { pub(code, { t:'dec', s }); removeIncoming(code); });
+  $('#incoming').appendChild(el);
+  toast(code + ' wants to send you files.');
+}
+function removeIncomingCard(code){ const el = document.getElementById('in-' + code); if (el) el.remove(); }
+function removeIncoming(code){ incoming.delete(code); removeIncomingCard(code); }
+
+async function accept(code, pickDir){
+  if (role) return toast('End the current session first.');
+  let handle = null;
+  if (pickDir) {
+    try { handle = await window.showDirectoryPicker({ mode:'readwrite' }); }
+    catch { return; }
+  }
+  const entry = incoming.get(code);
+  if (!entry) return toast('That request is no longer active.');
+  dirHandle = handle;
+  role = 'receiver'; peerCode = code; sess = { id:entry.s };
+  for (const [c, e] of incoming) if (c !== code) pub(c, { t:'dec', s:e.s });
+  incoming.clear(); $('#incoming').innerHTML = '';
+  openSession();
+  startRTC(false);
+  pub(code, { t:'acc', s:entry.s });
+}
+
+// ---- direct connection (WebRTC) -------------------------------------
+function startRTC(initiator){
+  const s = sess; const pc = new RTCPeerConnection(RTC_CONFIG);
+  s.pc = pc; s.iceQueue = []; s.remoteSet = false;
+  pc.onicecandidate = (e) => { if (e.candidate) pub(peerCode, { t:'ice', s:s.id, c:e.candidate }); };
+  pc.oniceconnectionstatechange = () => { if (pc.iceConnectionState === 'failed' && sess === s && !link) resetSession(RTC_FAIL); };
+  s.timer = setTimeout(() => { if (sess === s && !link) resetSession(RTC_FAIL); }, 25000);
+  if (initiator) {
+    setupChannel(s, pc.createDataChannel('ft'));
+    pc.createOffer().then((o) => pc.setLocalDescription(o)).then(() => pub(peerCode, { t:'sdp', s:s.id, d:pc.localDescription }));
+  } else {
+    pc.ondatachannel = (e) => setupChannel(s, e.channel);
+  }
+}
+function setupChannel(s, ch){
+  ch.binaryType = 'arraybuffer';
+  ch.onopen = () => {
+    if (sess !== s || link) return;
+    clearTimeout(s.timer);
+    link = { send:(d) => ch.send(d), close:() => { try { ch.close(); } catch {} } };
+    linkReady();
+  };
+  ch.onmessage = (e) => { if (sess === s) handleData(e.data); };
+  ch.onclose = () => { if (sess === s && role && link) resetSession((peerCode || 'The other side') + ' disconnected.', false); };
+}
+async function onSdp(m){
+  const s = sess; if (!s || s.id !== m.s || !s.pc) return;
+  try {
+    await s.pc.setRemoteDescription(m.d); s.remoteSet = true;
+    for (const c of s.iceQueue) await s.pc.addIceCandidate(c); s.iceQueue = [];
+    if (m.d.type === 'offer') {
+      await s.pc.setLocalDescription(await s.pc.createAnswer());
+      pub(peerCode, { t:'sdp', s:s.id, d:s.pc.localDescription });
+    }
+  } catch (err) { console.warn('sdp error', err); }
+}
+async function onIce(m){
+  const s = sess; if (!s || s.id !== m.s || !s.pc) return;
+  try { if (s.remoteSet) await s.pc.addIceCandidate(m.c); else s.iceQueue.push(m.c); } catch (err) { console.warn('ice error', err); }
+}
+
+// ---- session UI ------------------------------------------------------
+const rows = new Map();
+function openSession(){
+  aborted = false; resetCounters();
+  $('#session').classList.remove('hidden');
+  $('#files').innerHTML = ''; rows.clear();
+  $('#sessTitle').textContent = (role === 'sender' ? 'Sending to ' : 'Receiving from ') + peerCode;
+  $('#sessMode').textContent = 'Connecting…';
+  $('#senderUI').classList.toggle('hidden', role !== 'sender');
+  const rn = $('#receiverNote'); rn.classList.toggle('hidden', role !== 'receiver');
+  if (role === 'receiver') {
+    rn.textContent = dirHandle
+      ? 'Saving into the folder “' + dirHandle.name + '”. Large files stream straight to disk.'
+      : 'Saving to your Downloads. Each file is held in memory until it finishes, so for very large files use Chrome or Edge and choose a folder.';
+  }
+}
+async function linkReady(){
+  $('#sessMode').textContent = 'Connected';
+  try { // report whether the path is direct or via a TURN relay
+    const stats = await sess.pc.getStats(); let pair;
+    stats.forEach((r) => { if (r.type === 'transport' && r.selectedCandidatePairId) pair = stats.get(r.selectedCandidatePairId); });
+    if (!pair) stats.forEach((r) => { if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') pair = r; });
+    if (pair) {
+      const l = stats.get(pair.localCandidateId), r = stats.get(pair.remoteCandidateId);
+      const relay = (l && l.candidateType === 'relay') || (r && r.candidateType === 'relay');
+      $('#sessMode').textContent = relay ? 'Connected through a relay' : 'Direct, peer-to-peer';
+    }
+  } catch {}
+  if (role === 'sender') pump();
+}
+function resetSession(msg, notify = true){
+  aborted = true;
+  const s = sess, l = link;
+  if (s && notify && peerCode) pub(peerCode, { t:'bye', s:s.id });
+  sess = null; link = null;
+  if (s) { clearTimeout(s.timer); if (s.pc) { try { s.pc.close(); } catch {} } }
+  if (l) l.close();
+  role = null; peerCode = null;
+  if (ackWaiter) { ackWaiter(); ackWaiter = null; }
+  if (cur && cur.writable) { try { cur.writable.abort(); } catch {} }
+  cur = null;
+  queue.forEach((q) => { if (q.state !== 'done') setRow(q.id, 'fail', 'Stopped'); });
+  queue = []; rxQueue = Promise.resolve(); dirHandle = null;
+  $('#session').classList.add('hidden');
+  if (msg) toast(msg);
+}
+$('#endBtn').onclick = () => resetSession('Session ended.');
+window.addEventListener('beforeunload', (e) => {
+  if (role && (sending || cur)) { e.preventDefault(); e.returnValue = ''; }
+});
+
+function addRow(id, name, size){
+  const el = document.createElement('div'); el.className = 'file';
+  el.innerHTML = '<div class="l"><span class="n"></span><span class="s"></span></div><div class="bar"><i></i></div>';
+  el.querySelector('.n').textContent = name; el.title = name;
+  el.querySelector('.s').textContent = '0 / ' + fmt(size);
+  $('#files').appendChild(el);
+  rows.set(id, { el, size, s: el.querySelector('.s'), bar: el.querySelector('i'), last: 0 });
+}
+function progress(id, bytes){
+  const r = rows.get(id); if (!r) return;
+  const now = performance.now(); if (now - r.last < 100 && bytes < r.size) return; r.last = now;
+  r.s.textContent = fmt(bytes) + ' / ' + fmt(r.size);
+  r.bar.style.width = (r.size ? Math.min(100, bytes / r.size * 100) : 100) + '%';
+}
+function setRow(id, state, text){
+  const r = rows.get(id); if (!r) return;
+  r.el.classList.remove('done','fail'); if (state) r.el.classList.add(state);
+  if (text) r.s.textContent = text;
+  if (state === 'done') r.bar.style.width = '100%';
+}
+
+// ---- transfer protocol ----------------------------------------------
+// text messages = JSON control; binary messages = file bytes.
+let rxQueue = Promise.resolve();
+function handleData(d){ rxQueue = rxQueue.then(() => process(d)).catch(fail); }
+function fail(err){
+  console.error(err);
+  const msg = String((err && err.message) || err);
+  toast('Transfer problem: ' + msg);
+  if (link) sendJSON(link, { c:'error', m:msg });
+  aborted = true;
+}
+
+// sender state
+let queue = [], sending = false, sentTotal = 0, ackedTotal = 0, ackWaiter = null, nextId = 1;
+// receiver state
+let cur = null, totalRx = 0, lastAck = 0;
+function resetCounters(){ sentTotal = ackedTotal = totalRx = lastAck = 0; cur = null; queue = []; sending = false; }
+
+async function process(d){
+  if (typeof d === 'string') {
+    let m; try { m = JSON.parse(d); } catch { return; }
+    if (role === 'sender') {
+      if (m.c === 'ack') { ackedTotal = m.n; if (ackWaiter) { const r = ackWaiter; ackWaiter = null; r(); } }
+      else if (m.c === 'filedone') { const it = queue.find((q) => q.id === m.id); if (it) { it.state = 'done'; setRow(it.id, 'done', fmt(it.file.size) + ' sent'); } }
+      else if (m.c === 'error') { aborted = true; toast('Receiver reported: ' + m.m); if (ackWaiter) { ackWaiter(); ackWaiter = null; } }
+    } else if (role === 'receiver') {
+      if (m.c === 'file') await openFile(m);
+      else if (m.c === 'end') await closeFile();
+    }
+    return;
+  }
+  if (role !== 'receiver' || !cur) return;
+  const n = d.byteLength;
+  if (cur.writable) await cur.writable.write(d); else cur.chunks.push(d);
+  cur.got += n; totalRx += n;
+  progress(cur.id, cur.got);
+  if (totalRx - lastAck >= ACK_EVERY) { lastAck = totalRx; sendJSON(link, { c:'ack', n:totalRx }); }
+}
+
+function cleanPath(name){
+  return String(name).replace(/\\/g,'/').split('/')
+    .map((p) => p.replace(/[\u0000-\u001f<>:"|?*]/g,'_').trim())
+    .filter((p) => p && p !== '.' && p !== '..');
+}
+async function uniqueHandle(name){
+  const parts = cleanPath(name); const fileName = parts.pop() || 'file';
+  let dir = dirHandle;
+  for (const p of parts) dir = await dir.getDirectoryHandle(p, { create:true });
+  const dot = fileName.lastIndexOf('.');
+  const base = dot > 0 ? fileName.slice(0,dot) : fileName, ext = dot > 0 ? fileName.slice(dot) : '';
+  let candidate = fileName, i = 1;
+  for (;;) {
+    try { await dir.getFileHandle(candidate); candidate = base + ' (' + (i++) + ')' + ext; }
+    catch { return dir.getFileHandle(candidate, { create:true }); }
+  }
+}
+async function openFile(m){
+  addRow(m.id, m.name, m.size);
+  cur = { id:m.id, name:m.name, size:m.size, got:0, writable:null, chunks:[] };
+  if (dirHandle) { const fh = await uniqueHandle(m.name); cur.writable = await fh.createWritable(); }
+}
+async function closeFile(){
+  if (!cur) return;
+  const c = cur;
+  if (c.writable) await c.writable.close();
+  else {
+    const url = URL.createObjectURL(new Blob(c.chunks));
+    const a = document.createElement('a'); a.href = url; a.download = cleanPath(c.name).pop() || 'file';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+  cur = null;
+  setRow(c.id, 'done', fmt(c.size) + ' saved');
+  lastAck = totalRx;
+  sendJSON(link, { c:'ack', n:totalRx });
+  sendJSON(link, { c:'filedone', id:c.id });
+}
+
+// ---- sending ---------------------------------------------------------
+function enqueue(files){
+  if (role !== 'sender') return;
+  for (const f of files) {
+    const name = f.webkitRelativePath || f.name;
+    const it = { id: nextId++, file: f, name, state:'queued' };
+    queue.push(it); addRow(it.id, name, f.size);
+  }
+  pump();
+}
+async function pump(){
+  if (sending || !link || role !== 'sender') return;
+  sending = true;
+  try {
+    for (;;) {
+      const it = queue.find((q) => q.state === 'queued'); if (!it) break;
+      await sendFile(it);
+    }
+  } catch (err) { if (role) toast(err.message || 'Sending stopped.'); }
+  finally { sending = false; }
+}
+async function sendFile(it){
+  const myLink = link; const size = it.file.size;
+  it.state = 'sending';
+  sendJSON(myLink, { c:'file', id:it.id, name:it.name, size });
+  let off = 0;
+  while (off < size) {
+    const end = Math.min(off + READ, size);
+    const buf = await it.file.slice(off, end).arrayBuffer();
+    for (let p = 0; p < buf.byteLength; p += CHUNK) {
+      while (!aborted && sentTotal - ackedTotal > WINDOW) await new Promise((r) => { ackWaiter = r; });
+      if (aborted || link !== myLink) throw new Error('Connection closed before “' + it.name + '” finished.');
+      const piece = new Uint8Array(buf, p, Math.min(CHUNK, buf.byteLength - p));
+      myLink.send(piece); sentTotal += piece.byteLength;
+      progress(it.id, off + p + piece.byteLength);
+    }
+    off = end;
+  }
+  progress(it.id, size);
+  sendJSON(myLink, { c:'end' });
+  setRow(it.id, '', 'Waiting for receiver to finish…');
+}
+
+// inputs
+$('#pickFiles').onclick = () => $('#fileInput').click();
+$('#pickFolder').onclick = () => $('#folderInput').click();
+$('#fileInput').onchange = (e) => { enqueue([...e.target.files]); e.target.value = ''; };
+$('#folderInput').onchange = (e) => { enqueue([...e.target.files]); e.target.value = ''; };
+const drop = $('#drop');
+['dragenter','dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', (e) => { enqueue([...e.dataTransfer.files]); });
+
+pickCode().then((code) => {
+  myCode = code; store.set('handover-code', code);
+  $('#myCode').textContent = code;
+  startSignalling();
+});
+})();
+</script>
+</body>
+</html>
